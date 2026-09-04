@@ -1,0 +1,48 @@
+{
+  "name": "lauther",
+  "version": "0.2.0",
+  "description": "Send push notifications to your phone from any web app or script — and ask questions that wait for a yes.",
+  "keywords": [
+    "push",
+    "notifications",
+    "push-notifications",
+    "approval",
+    "human-in-the-loop",
+    "agent",
+    "webhook",
+    "ios",
+    "android",
+    "lauther"
+  ],
+  "homepage": "https://lauther.app",
+  "bugs": {
+    "url": "https://github.com/csanadymiklos/lauther-js/issues"
+  },
+  "license": "MIT",
+  "author": "Dipling Kft.",
+  "type": "module",
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/csanadymiklos/lauther-js.git",
+    "directory": "packages/lauther"
+  }
+}

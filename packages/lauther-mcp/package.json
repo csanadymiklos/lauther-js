@@ -1,0 +1,48 @@
+{
+  "name": "lauther-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets an AI agent ask its owner for approval on their phone before doing something irreversible.",
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "claude",
+    "cursor",
+    "agent",
+    "human-in-the-loop",
+    "approval",
+    "push",
+    "notifications",
+    "lauther"
+  ],
+  "homepage": "https://lauther.app",
+  "license": "MIT",
+  "author": "Dipling Kft.",
+  "type": "module",
+  "bin": {
+    "lauther-mcp": "./src/index.js"
+  },
+  "main": "./src/index.js",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "lauther": "^0.2.0",
+    "zod": "^3.25.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/csanadymiklos/lauther-js.git",
+    "directory": "packages/lauther-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/csanadymiklos/lauther-js/issues"
+  }
+}
