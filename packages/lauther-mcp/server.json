@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.csanadymiklos/lauther",
+  "description": "Ask a human for approval on their phone before an agent acts, and wait for the answer. Optionally requires a fingerprint, and records that a person gave it.",
+  "repository": {
+    "url": "https://github.com/csanadymiklos/lauther-js",
+    "source": "github",
+    "subfolder": "packages/lauther-mcp"
+  },
+  "version": "0.1.1",
+  "websiteUrl": "https://lauther.app",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "lauther-mcp",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "LAUTHER_TOKEN",
+          "description": "Your Lauther token. Get one in the Lauther app under Apps -> + -> New token.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
