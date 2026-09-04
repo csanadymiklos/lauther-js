@@ -18,7 +18,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { Lauther, LautherError } from "lauther";
+import { Lauther, LautherError } from "lauther-client";
 
 const TOKEN = process.env.LAUTHER_TOKEN;
 const BASE_URL = process.env.LAUTHER_BASE_URL; // tests and self-hosted relays

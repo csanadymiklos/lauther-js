@@ -1,5 +1,5 @@
 {
-  "name": "lauther",
+  "name": "lauther-client",
   "version": "0.2.0",
   "description": "Send push notifications to your phone from any web app or script — and ask questions that wait for a yes.",
   "keywords": [
@@ -12,7 +12,8 @@
     "webhook",
     "ios",
     "android",
-    "lauther"
+    "lauther",
+    "lauther-client"
   ],
   "homepage": "https://lauther.app",
   "bugs": {
@@ -43,6 +44,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/csanadymiklos/lauther-js.git",
-    "directory": "packages/lauther"
+    "directory": "packages/lauther-client"
   }
 }

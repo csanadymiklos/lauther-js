@@ -1,4 +1,4 @@
-# lauther
+# lauther-client
 
 Push notifications to your phone from any web app or script — and questions
 that **wait for a yes** before something irreversible happens.
@@ -6,7 +6,7 @@ that **wait for a yes** before something irreversible happens.
 Zero dependencies. Node 18+. Two methods.
 
 ```bash
-npm install lauther
+npm install lauther-client
 ```
 
 ## Why this exists
@@ -18,7 +18,7 @@ over an HTTP call, so any of them can reach a real phone.
 ## Send a notification
 
 ```js
-import { Lauther } from "lauther";
+import { Lauther } from "lauther-client";
 
 const lauther = new Lauther(process.env.LAUTHER_TOKEN);
 
@@ -83,7 +83,7 @@ const { response } = await lauther.approve({
 ## Handling failure
 
 ```js
-import { Lauther, LautherError } from "lauther";
+import { Lauther, LautherError } from "lauther-client";
 
 try {
   await lauther.push({ title: "Backup finished" });

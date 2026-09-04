@@ -81,7 +81,7 @@ is the difference between an audit trail and a log line.
 
 ## Related
 
-- [`lauther`](https://www.npmjs.com/package/lauther) — the plain Node client,
+- [`lauther-client`](https://www.npmjs.com/package/lauther-client) — the plain Node client,
   if you want push and approvals in your own code rather than in an agent.
 - [Docs](https://lauther.app/docs.html) · [Recipes](https://github.com/csanadymiklos/lauther-examples)
 - Something wrong? **hello@lauther.id** reaches a human.

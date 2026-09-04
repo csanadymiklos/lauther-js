@@ -6,15 +6,15 @@ before something irreversible happens.
 
 | Package | What it is |
 | --- | --- |
-| [`lauther`](packages/lauther) | The Node client. Zero dependencies, two methods, TypeScript types bundled. |
+| [`lauther-client`](packages/lauther-client) | The Node client. Zero dependencies, two methods, TypeScript types bundled. |
 | [`lauther-mcp`](packages/lauther-mcp) | An MCP server, so a coding agent can ask its owner for approval on their phone. |
 
 ```bash
-npm install lauther
+npm install lauther-client
 ```
 
 ```js
-import { Lauther } from "lauther";
+import { Lauther } from "lauther-client";
 
 const lauther = new Lauther(process.env.LAUTHER_TOKEN);
 
@@ -43,7 +43,7 @@ npm install
 npm test          # both packages
 ```
 
-`lauther` has no runtime dependencies and is tested with a stubbed `fetch`.
+`lauther-client` has no runtime dependencies and is tested with a stubbed `fetch`.
 `lauther-mcp` is tested by spawning the real server over stdio and driving it
 with a real MCP client against a fake Lauther API — so a broken tool schema or
 broken stdio wiring fails the suite rather than a user's agent.
