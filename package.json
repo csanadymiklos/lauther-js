@@ -1,8 +1,11 @@
 {
   "name": "lauther-js-workspace",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "test": "npm test --workspaces --if-present"
-  }
+  },
+  "license": "MIT"
 }
