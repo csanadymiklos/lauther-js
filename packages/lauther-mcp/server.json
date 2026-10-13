@@ -7,13 +7,13 @@
     "source": "github",
     "subfolder": "packages/lauther-mcp"
   },
-  "version": "0.2.0",
+  "version": "0.2.1",
   "websiteUrl": "https://lauther.app",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "lauther-mcp",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "transport": {
         "type": "stdio"
       },
