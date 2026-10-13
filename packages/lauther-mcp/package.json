@@ -1,7 +1,7 @@
 {
   "name": "lauther-mcp",
   "mcpName": "io.github.csanadymiklos/lauther",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "MCP server that lets an AI agent ask its owner for approval on their phone before doing something irreversible.",
   "keywords": [
     "mcp",
@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "lauther-client": "^0.2.0",
+    "lauther-client": "^0.3.0",
     "zod": "^3.25.0"
   },
   "repository": {

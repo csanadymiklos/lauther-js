@@ -1,6 +1,6 @@
 {
   "name": "lauther-client",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Send push notifications to your phone from any web app or script — and ask questions that wait for a yes.",
   "keywords": [
     "push",

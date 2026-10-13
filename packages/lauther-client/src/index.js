@@ -2,7 +2,7 @@
  * Lauther — push notifications and human approvals for anything that can make
  * an HTTP request.
  *
- * Zero dependencies on purpose. The whole client is `fetch` against two
+ * Zero dependencies on purpose. The whole client is `fetch` against a few
  * documented endpoints, so there is no SDK to go stale against the API and
  * nothing to audit before you install it. If this package ever disappears,
  * the four lines it replaces are in the README.
@@ -116,7 +116,10 @@ export class Lauther {
    * Note this endpoint takes the token in the body rather than as a bearer
    * header — that is the API's shape, not a mistake here.
    *
-   * @param {string} id The `id` returned by `approve()`.
+   * For a request, the answer also carries `result` (what was shared, or
+   * `null`) and `expired` (true once the request has lapsed unanswered).
+   *
+   * @param {string} id The `id` returned by `approve()` or `request()`.
    * @returns {Promise<import("./index.d.ts").PollResult>}
    */
   async poll(id) {
@@ -173,6 +176,110 @@ export class Lauther {
     return {
       id: started.id, response: null, confirmedBy: null,
       waitedSeconds: Math.round(elapsed()),
+    };
+  }
+
+  /**
+   * Ask the person to share something from their phone: where they are, or a
+   * picture. The "yes" carries the payload.
+   *
+   * Like `approve()` this blocks server-side for up to 25 seconds, and
+   * `response` is `"approve"`, `"deny"` or `null`. On an approve, `result`
+   * holds what was shared (see `LocationResult` and `PhotoResult`); on
+   * anything else it is `null`.
+   *
+   * @param {"location" | "photo"} kind
+   * @param {import("./index.d.ts").RequestOptions} [options]
+   * @returns {Promise<import("./index.d.ts").RequestResult>}
+   */
+  async request(kind, options) {
+    if (!kind) {
+      throw new LautherError('request() needs a kind: "location" or "photo".');
+    }
+    const {wait = MAX_WAIT_SECONDS, ...rest} = options ?? {};
+    return this.#request("/v1/request", {
+      kind,
+      ...rest,
+      wait: Math.min(Math.max(Number(wait) || 0, 0), MAX_WAIT_SECONDS),
+    });
+  }
+
+  /**
+   * Ask for the person's position, once, and wait for the answer as long as
+   * you are willing. Same waiting rules as `requestApproval()`: one request
+   * on the phone, polled past the server's 25s cap, never thrown on timeout.
+   *
+   * @param {import("./index.d.ts").RequestWaitOptions} [options]
+   * @returns {Promise<import("./index.d.ts").RequestOutcome<import("./index.d.ts").LocationResult>>}
+   */
+  requestLocation(options = {}) {
+    return this.#requestAndWait("location", options);
+  }
+
+  /**
+   * Ask for one picture and wait for it. Same waiting rules as
+   * `requestApproval()`. `result.url` is a download link that expires after
+   * 7 days.
+   *
+   * @param {import("./index.d.ts").RequestWaitOptions} [options]
+   * @returns {Promise<import("./index.d.ts").RequestOutcome<import("./index.d.ts").PhotoResult>>}
+   */
+  requestPhoto(options = {}) {
+    return this.#requestAndWait("photo", options);
+  }
+
+  /**
+   * Shared by `requestLocation()` and `requestPhoto()`: start the request,
+   * then keep asking about the SAME notification until it is answered,
+   * expires, or `timeoutSeconds` runs out.
+   *
+   * @param {"location" | "photo"} kind
+   * @param {import("./index.d.ts").RequestWaitOptions} options
+   */
+  async #requestAndWait(kind, options) {
+    const {
+      timeoutSeconds = MAX_WAIT_SECONDS,
+      pollIntervalMs = 3000,
+      ...rest
+    } = options ?? {};
+    const startedAt = Date.now();
+    const elapsed = () => (Date.now() - startedAt) / 1000;
+
+    const started = await this.request(kind, {
+      ...rest,
+      wait: Math.min(timeoutSeconds, MAX_WAIT_SECONDS),
+    });
+    if (started.response) {
+      return {
+        id: started.id, response: started.response,
+        confirmedBy: started.confirmedBy ?? null, result: started.result ?? null,
+        waitedSeconds: Math.round(elapsed()), expired: false,
+      };
+    }
+
+    while (elapsed() < timeoutSeconds) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      const {response, confirmedBy, result, expired} = await this.poll(started.id);
+      if (response) {
+        return {
+          id: started.id, response, confirmedBy: confirmedBy ?? null,
+          result: result ?? null, waitedSeconds: Math.round(elapsed()),
+          expired: false,
+        };
+      }
+      // The request lapsed on the phone: nothing more can arrive, so stop
+      // waiting rather than idling out the rest of the timeout.
+      if (expired === true) {
+        return {
+          id: started.id, response: null, confirmedBy: null, result: null,
+          waitedSeconds: Math.round(elapsed()), expired: true,
+        };
+      }
+    }
+    // Nobody answered. As with requestApproval(): an outcome, not an error.
+    return {
+      id: started.id, response: null, confirmedBy: null, result: null,
+      waitedSeconds: Math.round(elapsed()), expired: false,
     };
   }
 

@@ -2,11 +2,13 @@
 /**
  * lauther-mcp — an MCP server that puts a human in the loop, on their phone.
  *
- * Two tools, and resisting a third is the point:
+ * Four tools, each one thing an agent needs a person for:
  *
- *   ask_approval      the agent is about to do something irreversible and
- *                     asks first. Blocks until a person answers.
+ *   ask_approval       the agent is about to do something irreversible and
+ *                      asks first. Blocks until a person answers.
  *   send_notification  "the migration finished", "the build broke".
+ *   get_location       "where are you?" - one position, shared on a tap.
+ *   request_photo      "show me" - one picture, taken or picked on the phone.
  *
  * The interesting one is ask_approval. Lauther's /v1/approve long-polls for at
  * most 25 seconds, which suits a shell one-liner and not an agent whose owner
@@ -19,6 +21,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { Lauther, LautherError } from "lauther-client";
+import { createRequire } from "node:module";
+
+const PKG_VERSION = createRequire(import.meta.url)("../package.json").version;
 
 const TOKEN = process.env.LAUTHER_TOKEN;
 const BASE_URL = process.env.LAUTHER_BASE_URL; // tests and self-hosted relays
@@ -35,6 +40,12 @@ if (!TOKEN) {
 
 const lauther = new Lauther(TOKEN, BASE_URL ? { baseUrl: BASE_URL } : {});
 
+/** The server keeps shared photos for 7 days (SPEC_REQUESTS 1.5). */
+const PHOTO_RETENTION = "7 days";
+
+/** A shared photo is shown to the agent inline; the API caps uploads at 2 MB. */
+const MAX_INLINE_PHOTO_BYTES = 4 * 1024 * 1024;
+
 const text = (s) => ({ content: [{ type: "text", text: s }] });
 const failure = (s) => ({ content: [{ type: "text", text: s }], isError: true });
 
@@ -50,8 +61,54 @@ function explain(err) {
   return `Unexpected error: ${err?.message ?? String(err)}`;
 }
 
+/** `2026-10-13T09:00:00.000Z` becomes `2026-10-13T09:00:00Z`; anything odd passes through. */
+function isoSeconds(at) {
+  const d = new Date(at);
+  return Number.isNaN(d.getTime()) ? String(at) : d.toISOString().replace(/\.\d+Z$/, "Z");
+}
+
+/** " Confirmed by biometric." or nothing. */
+const confirmation = (out) => (out.confirmedBy ? ` Confirmed by ${out.confirmedBy}.` : "");
+
+/**
+ * The non-yes outcomes of a request, worded for an agent. Returns null when
+ * the person did approve, so the caller can describe what was shared.
+ *
+ * @param {string} what "location" or "photo", for the sentence
+ */
+function notShared(out, what) {
+  if (out.response === "approve") return null;
+  if (out.response === "deny") {
+    return text(`DECLINED after ${out.waitedSeconds}s. Do not retry, and do not try ` +
+      `to get the ${what} another way - report the refusal and stop.`);
+  }
+  if (out.expired) {
+    return text(`EXPIRED after ${out.waitedSeconds}s - the request lapsed on their ` +
+      `phone before anyone answered, and no ${what} was shared. Expiry is not ` +
+      "consent: say it expired and let the human restart it when they are back.");
+  }
+  return text(`NO ANSWER after ${out.waitedSeconds}s - nobody responded, so no ` +
+    `${what} was shared. Silence is not consent: say the request went unanswered ` +
+    "and let the human restart it when they are back.");
+}
+
+/** Fetch a shared photo for inline display. Null on any failure: the text still works. */
+async function fetchPhoto(url) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > MAX_INLINE_PHOTO_BYTES) return null;
+    return bytes.toString("base64");
+  } catch {
+    return null;
+  }
+}
+
 export function buildServer() {
-  const server = new McpServer({ name: "lauther", version: "0.1.0" });
+  // The version comes from package.json so it cannot drift from what npm
+  // published (it did once: 0.1.1 on npm reported itself as 0.1.0).
+  const server = new McpServer({ name: "lauther", version: PKG_VERSION });
 
   server.registerTool(
     "ask_approval",
@@ -143,6 +200,123 @@ export function buildServer() {
         return text(`Sent — delivered to ${out.delivered} of ${out.devices} device(s).`);
       } catch (err) {
         return failure(explain(err));
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_location",
+    {
+      title: "Ask a human to share their location",
+      description:
+        "Ask the human who owns this phone to share where they are right now. " +
+        "They get a prompt and choose Share or Decline; if they share, one " +
+        "position is sent, once, as it was at that moment. Use it when you " +
+        "need their location to do the task (find the nearest branch, set a " +
+        "timezone, log a site visit), not to track them. Returns SHARED with " +
+        "latitude, longitude and accuracy, or DECLINED, NO ANSWER or EXPIRED. " +
+        "On anything but SHARED you have no location: do not guess one.",
+      inputSchema: {
+        question: z.string().min(1).max(250).optional()
+          .describe("What they see on the prompt. Say why you need it: " +
+            "'Share your location so I can find the nearest pharmacy?'. " +
+            "Defaults to 'Share your location?'."),
+        details: z.string().max(2000).optional()
+          .describe("Anything else that helps them decide."),
+        require_biometric: z.boolean().optional()
+          .describe("Demand a fingerprint or face before the location is sent."),
+        timeout_seconds: z.number().int().min(5).max(900).optional()
+          .describe("How long to wait for an answer. Defaults to 120."),
+      },
+    },
+    async ({ question = "Share your location?", details, require_biometric,
+      timeout_seconds = 120 }) => {
+      try {
+        const out = await lauther.requestLocation({
+          title: question,
+          message: details,
+          requireBiometric: require_biometric,
+          timeoutSeconds: timeout_seconds,
+        });
+        const notYes = notShared(out, "location");
+        if (notYes) return notYes;
+
+        const loc = out.result;
+        if (!loc || typeof loc.lat !== "number" || typeof loc.lng !== "number") {
+          return failure("They approved, but Lauther returned no usable position. " +
+            "You have no location: do not guess one.");
+        }
+        const accuracy = typeof loc.accuracy === "number"
+          ? ` (±${Math.round(loc.accuracy)} m)` : "";
+        const at = loc.at ? ` at ${isoSeconds(loc.at)}` : "";
+        return text(`SHARED after ${out.waitedSeconds}s: ` +
+          `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}${accuracy}${at}.` +
+          `${confirmation(out)} That is where they were at that moment, shared once ` +
+          "for what you asked about - use it for that and nothing else.");
+      } catch (err) {
+        return failure(explain(err) + " No location was obtained, so do not guess one.");
+      }
+    },
+  );
+
+  server.registerTool(
+    "request_photo",
+    {
+      title: "Ask a human for a photo",
+      description:
+        "Ask the human who owns this phone for one picture. They get a prompt " +
+        "and choose to take a photo (or pick one) or Decline. Use it when you " +
+        "need to see something only they can show you: a label, a screen, a " +
+        "whiteboard, a damaged part. Returns SHARED with a link plus the image " +
+        "itself so you can look at it directly, or DECLINED, NO ANSWER or " +
+        "EXPIRED. The link works for 7 days and the photo is then deleted.",
+      inputSchema: {
+        question: z.string().min(1).max(250).optional()
+          .describe("What they see on the prompt. Say what you need to see: " +
+            "'Take a photo of the error on the printer display?'. " +
+            "Defaults to 'Take a photo?'."),
+        details: z.string().max(2000).optional()
+          .describe("Anything else that helps them decide or frame the shot."),
+        require_biometric: z.boolean().optional()
+          .describe("Demand a fingerprint or face before the photo is sent."),
+        timeout_seconds: z.number().int().min(5).max(900).optional()
+          .describe("How long to wait for an answer. Defaults to 120."),
+      },
+    },
+    async ({ question = "Take a photo?", details, require_biometric,
+      timeout_seconds = 120 }) => {
+      try {
+        const out = await lauther.requestPhoto({
+          title: question,
+          message: details,
+          requireBiometric: require_biometric,
+          timeoutSeconds: timeout_seconds,
+        });
+        const notYes = notShared(out, "photo");
+        if (notYes) return notYes;
+
+        const photo = out.result;
+        if (!photo || typeof photo.url !== "string") {
+          return failure("They approved, but Lauther returned no photo. You have " +
+            "nothing to look at: do not guess what it showed.");
+        }
+        const size = photo.width && photo.height ? ` ${photo.width}x${photo.height}` : "";
+        const line = `SHARED after ${out.waitedSeconds}s: photo${size} at ${photo.url} ` +
+          `- available for ${PHOTO_RETENTION}.${confirmation(out)}`;
+
+        const data = await fetchPhoto(photo.url);
+        if (!data) {
+          return text(`${line} The image could not be fetched to show you inline, ` +
+            "but the link above still works.");
+        }
+        return {
+          content: [
+            { type: "text", text: `${line} The picture is attached.` },
+            { type: "image", data, mimeType: "image/jpeg" },
+          ],
+        };
+      } catch (err) {
+        return failure(explain(err) + " No photo was obtained, so do not guess what it showed.");
       }
     },
   );

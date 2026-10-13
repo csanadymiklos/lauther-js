@@ -161,3 +161,134 @@ test("nobody answering is an outcome, not an exception - and never a yes", async
   assert.equal(out.response, null);
   assert.equal(await l.ask("Drop the table?", { timeoutSeconds: 0.05, pollIntervalMs: 1 }), false);
 });
+
+// --- requests: location and photo ------------------------------------------
+
+const FIX = { lat: 47.4979, lng: 19.0402, accuracy: 12.5, at: "2026-10-13T09:00:00.000Z" };
+
+test("request() posts the kind with the bearer token and caps wait at 25", async () => {
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r1", response: null, result: null },
+  });
+  const out = await new Lauther("lpt_test", { fetch }).request("location", {
+    title: "Where are you?", requireBiometric: true, expiresIn: 120, wait: 99,
+  });
+  assert.equal(out.id, "r1");
+  assert.deepEqual(fetch.calls[0].body, {
+    kind: "location", title: "Where are you?", requireBiometric: true,
+    expiresIn: 120, wait: 25,
+  });
+  assert.equal(fetch.calls[0].path, "/v1/request");
+});
+
+test("request() needs a kind", async () => {
+  const l = new Lauther("lpt_test", { fetch: routedFetch({}) });
+  await assert.rejects(() => l.request(), LautherError);
+});
+
+test("request() surfaces the API's code, e.g. unknown_kind", async () => {
+  const fetch = async () => ({
+    ok: false, status: 400,
+    text: async () => JSON.stringify({ error: "Unknown kind", code: "unknown_kind" }),
+  });
+  await assert.rejects(
+    () => new Lauther("lpt_test", { fetch }).request("voice"),
+    (e) => e instanceof LautherError && e.status === 400 && e.code === "unknown_kind");
+});
+
+test("poll passes result and expired through", async () => {
+  const fetch = routedFetch({
+    "/v1/action/poll": { response: "approve", confirmedBy: null, result: FIX, expired: false },
+  });
+  const out = await new Lauther("lpt_test", { fetch }).poll("r1");
+  assert.deepEqual(out.result, FIX);
+  assert.equal(out.expired, false);
+});
+
+test("requestLocation returns straight away when the long-poll already answered", async () => {
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r1", response: "approve", result: FIX },
+  });
+  const out = await new Lauther("lpt_test", { fetch }).requestLocation();
+  assert.equal(out.response, "approve");
+  assert.deepEqual(out.result, FIX);
+  assert.equal(out.expired, false);
+  assert.equal(out.confirmedBy, null);
+  assert.equal(fetch.calls.length, 1, "must not poll when it already knows");
+  assert.equal(fetch.calls[0].body.kind, "location");
+});
+
+test("requestLocation polls past 25s on ONE request and returns the result", async () => {
+  let polls = 0;
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r1", response: null, result: null },
+    "/v1/action/poll": () => {
+      polls += 1;
+      return polls < 3
+        ? { response: null, confirmedBy: null, result: null }
+        : { response: "approve", confirmedBy: "biometric", result: FIX };
+    },
+  });
+  const out = await new Lauther("lpt_test", { fetch })
+      .requestLocation({ timeoutSeconds: 60, pollIntervalMs: 1, title: "Where?" });
+  assert.equal(out.response, "approve");
+  assert.equal(out.confirmedBy, "biometric");
+  assert.deepEqual(out.result, FIX);
+  const starts = fetch.calls.filter(c => c.path === "/v1/request");
+  assert.equal(starts.length, 1, "one request on the phone, not a pile");
+  assert.equal(starts[0].body.wait, 25);
+  assert.equal(starts[0].body.title, "Where?");
+  assert.equal(starts[0].body.timeoutSeconds, undefined, "client-only options stay client-side");
+});
+
+test("requestPhoto sends kind photo and hands back the photo result", async () => {
+  const photo = { url: "https://example.test/p.jpg", bytes: 1234, width: 1600, height: 1200 };
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r2", response: null, result: null },
+    "/v1/action/poll": { response: "approve", confirmedBy: null, result: photo },
+  });
+  const out = await new Lauther("lpt_test", { fetch })
+      .requestPhoto({ timeoutSeconds: 60, pollIntervalMs: 1 });
+  assert.equal(fetch.calls[0].body.kind, "photo");
+  assert.deepEqual(out.result, photo);
+});
+
+test("a denial carries no result", async () => {
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r1", response: null, result: null },
+    "/v1/action/poll": { response: "deny", confirmedBy: null, result: null },
+  });
+  const out = await new Lauther("lpt_test", { fetch })
+      .requestLocation({ timeoutSeconds: 60, pollIntervalMs: 1 });
+  assert.equal(out.response, "deny");
+  assert.equal(out.result, null);
+});
+
+test("an expired request stops the wait early and says so", async () => {
+  let polls = 0;
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r1", response: null, result: null },
+    "/v1/action/poll": () => {
+      polls += 1;
+      return { response: null, confirmedBy: null, result: null, expired: true };
+    },
+  });
+  const out = await new Lauther("lpt_test", { fetch })
+      .requestLocation({ timeoutSeconds: 600, pollIntervalMs: 1 });
+  assert.equal(out.response, null);
+  assert.equal(out.expired, true);
+  assert.equal(out.result, null);
+  assert.equal(polls, 1, "no point polling a dead request");
+});
+
+test("nobody answering a request is an outcome, not an exception", async () => {
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r1", response: null, result: null },
+    "/v1/action/poll": { response: null, confirmedBy: null, result: null },
+  });
+  const out = await new Lauther("lpt_test", { fetch })
+      .requestPhoto({ timeoutSeconds: 0.05, pollIntervalMs: 1 });
+  assert.equal(out.response, null);
+  assert.equal(out.result, null);
+  assert.equal(out.expired, false);
+});

@@ -30,7 +30,7 @@ token**. Then add the server to your MCP config:
 
 Nothing to install — `npx` fetches it. Node 18+.
 
-## The two tools
+## The tools
 
 ### `ask_approval`
 
@@ -61,6 +61,31 @@ One-way: "the migration finished", "the build broke". Takes `title`,
 It reports what actually happened, including the case worth knowing about: if
 no device is registered on your account, you're told that rather than given a
 cheerful success for a notification nobody received.
+
+### `get_location`
+
+Asks you to share where you are, once. You get a prompt on your phone with
+**Share location** and **Decline**; the agent receives one position, as it was
+when you tapped.
+
+| Result | What the agent is told |
+| --- | --- |
+| `SHARED` | latitude, longitude, accuracy in metres, and when it was read |
+| `DECLINED` | do not retry and do not find the location another way |
+| `NO ANSWER` | silence is not consent; nothing was shared |
+| `EXPIRED` | the request lapsed on your phone; nothing was shared |
+
+Options: `question` (what you see on the prompt), `details`,
+`require_biometric`, `timeout_seconds` (default 120).
+
+### `request_photo`
+
+Asks you for one picture, taken on the spot or picked from your library. The
+agent gets the link **and the image itself**, so it can look at it. The link
+works for 7 days, after which the photo is deleted. If the image cannot be
+fetched the agent still gets the text and the link.
+
+Same options and the same four outcomes as `get_location`.
 
 ## Telling your agent when to use it
 

@@ -3,7 +3,7 @@
 Push notifications to your phone from any web app or script — and questions
 that **wait for a yes** before something irreversible happens.
 
-Zero dependencies. Node 18+. Two methods.
+Zero dependencies. Node 18+.
 
 ```bash
 npm install lauther-client
@@ -80,6 +80,50 @@ const { response } = await lauther.approve({
 // response is "approve", "deny", or null when nobody answered in time.
 ```
 
+## Requests
+
+A request is an approval whose "yes" carries something back: the person taps
+**Share**, the phone does one thing while they watch, and the result rides
+home on the answer. Two kinds: where they are, and one picture.
+
+```js
+const where = await lauther.requestLocation({
+  title: "Share your location so I can find the nearest pharmacy?",
+  timeoutSeconds: 300,
+});
+
+if (where.response === "approve") {
+  const { lat, lng, accuracy, at } = where.result;
+}
+```
+
+```js
+const shot = await lauther.requestPhoto({ title: "Photo of the printer display?" });
+
+if (shot.response === "approve") {
+  const { url, bytes, width, height } = shot.result; // a JPEG download link
+}
+```
+
+Both return `{ id, response, confirmedBy, result, waitedSeconds, expired }`.
+`response` is `"approve"`, `"deny"` or `null`, and `result` is `null` unless
+the person approved. They wait the way `requestApproval()` does: past the
+server's 25 seconds on the **same** request, so the phone still shows one.
+Silence is a returned outcome rather than a thrown error. `expired: true`
+means the request lapsed on the phone (10 minutes by default; set
+`expiresIn`, 60 to 3600 seconds) and the wait ends early.
+
+- **Location** is one reading, taken when they tap Share and sent once:
+  `{ lat, lng, accuracy, at }`, with `accuracy` in metres.
+- **Photo** is a JPEG they take or pick, at most 2 MB. You receive a link,
+  and **the link works for 7 days**; download it if you want to keep it.
+
+Options for both: `title`, `message`, `requireBiometric`, `priority`,
+`expiresIn`, plus `timeoutSeconds` and `pollIntervalMs` for the wait. For
+full control, `request(kind, options)` is the single call behind them (it
+answers within `wait` seconds, 0 to 25), and `poll(id)` also returns `result`
+and `expired`.
+
 ## Handling failure
 
 ```js
@@ -119,7 +163,10 @@ reported separately rather than collapsed into one flag.
 | `push(options)` | `title`, `message`, `priority`, `url`, `path`, `tag`, `icon`, `color`, `sound`, `image` |
 | `approve(options)` | `title`, `message`, `wait` (0–25s), `approveTitle`, `denyTitle`, `requireBiometric`, `priority` |
 | `requestApproval(question, options?)` | Ask and wait, past the 25s cap, on one notification |
-| `poll(id)` | Ask about an approval already started |
+| `request(kind, options?)` | Ask for `"location"` or `"photo"`; `title`, `message`, `requireBiometric`, `priority`, `wait`, `expiresIn` |
+| `requestLocation(options?)` | Ask for a position and wait, past the 25s cap, on one request |
+| `requestPhoto(options?)` | Ask for one picture and wait, past the 25s cap |
+| `poll(id)` | Ask about an approval or request already started (carries `result` and `expired`) |
 | `ask(question, options?)` | `requestApproval()` reduced to a boolean |
 
 `priority` runs `-2` to `2`. **`2` is the only level that crosses quiet
@@ -133,7 +180,7 @@ TypeScript types are bundled; there is no `@types` package to install.
 
 ## You do not need this package
 
-The whole client is `fetch` against two documented endpoints. If you would
+The whole client is `fetch` against a few documented endpoints. If you would
 rather not add a dependency, this is the entire integration:
 
 ```js
