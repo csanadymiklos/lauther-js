@@ -84,7 +84,8 @@ const { response } = await lauther.approve({
 
 A request is an approval whose "yes" carries something back: the person taps
 **Share**, the phone does one thing while they watch, and the result rides
-home on the answer. Two kinds: where they are, and one picture.
+home on the answer. Three kinds: where they are, one picture, and a short
+typed answer.
 
 ```js
 const where = await lauther.requestLocation({
@@ -105,7 +106,18 @@ if (shot.response === "approve") {
 }
 ```
 
-Both return `{ id, response, confirmedBy, result, waitedSeconds, expired }`.
+```js
+const code = await lauther.requestText({
+  title: "What is the 6-digit code from your authenticator?",
+  placeholder: "6-digit code",
+});
+
+if (code.response === "approve") {
+  const { text } = code.result; // what they typed
+}
+```
+
+All three return `{ id, response, confirmedBy, result, waitedSeconds, expired }`.
 `response` is `"approve"`, `"deny"` or `null`, and `result` is `null` unless
 the person approved. They wait the way `requestApproval()` does: past the
 server's 25 seconds on the **same** request, so the phone still shows one.
@@ -117,9 +129,14 @@ means the request lapsed on the phone (10 minutes by default; set
   `{ lat, lng, accuracy, at }`, with `accuracy` in metres.
 - **Photo** is a JPEG they take or pick, at most 2 MB. You receive a link,
   and **the link works for 7 days**; download it if you want to keep it.
+- **Text** is a short answer they type on the phone: `{ text }`, 1 to 500
+  characters. Use it for a code, a choice, a short fact only they know. The
+  optional `placeholder` (up to 80 characters) hints at the shape of the
+  answer, such as "6-digit code".
 
-Options for both: `title`, `message`, `requireBiometric`, `priority`,
-`expiresIn`, plus `timeoutSeconds` and `pollIntervalMs` for the wait. For
+Options for all three: `title`, `message`, `requireBiometric`, `priority`,
+`expiresIn`, plus `timeoutSeconds` and `pollIntervalMs` for the wait;
+`requestText()` also takes `placeholder`. For
 full control, `request(kind, options)` is the single call behind them (it
 answers within `wait` seconds, 0 to 25), and `poll(id)` also returns `result`
 and `expired`.
@@ -163,9 +180,10 @@ reported separately rather than collapsed into one flag.
 | `push(options)` | `title`, `message`, `priority`, `url`, `path`, `tag`, `icon`, `color`, `sound`, `image` |
 | `approve(options)` | `title`, `message`, `wait` (0–25s), `approveTitle`, `denyTitle`, `requireBiometric`, `priority` |
 | `requestApproval(question, options?)` | Ask and wait, past the 25s cap, on one notification |
-| `request(kind, options?)` | Ask for `"location"` or `"photo"`; `title`, `message`, `requireBiometric`, `priority`, `wait`, `expiresIn` |
+| `request(kind, options?)` | Ask for `"location"`, `"photo"` or `"text"`; `title`, `message`, `requireBiometric`, `priority`, `wait`, `expiresIn`, `placeholder` |
 | `requestLocation(options?)` | Ask for a position and wait, past the 25s cap, on one request |
 | `requestPhoto(options?)` | Ask for one picture and wait, past the 25s cap |
+| `requestText(options?)` | Ask a short question and wait for the typed answer, past the 25s cap |
 | `poll(id)` | Ask about an approval or request already started (carries `result` and `expired`) |
 | `ask(question, options?)` | `requestApproval()` reduced to a boolean |
 

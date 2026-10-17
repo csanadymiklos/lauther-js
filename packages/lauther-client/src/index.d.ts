@@ -70,10 +70,10 @@ export interface PollResult {
   /** How the answer was confirmed, e.g. a biometric check. `null` if not. */
   confirmedBy: string | null;
   /**
-   * What a request carried back: a `LocationResult` or `PhotoResult` once
-   * approved, `null` until then, when denied, and for plain approvals.
+   * What a request carried back: a `LocationResult`, `PhotoResult` or
+   * `TextResult` once approved, `null` until then, when denied, and for plain approvals.
    */
-  result?: LocationResult | PhotoResult | null;
+  result?: LocationResult | PhotoResult | TextResult | null;
   /** `true` once a request has lapsed unanswered; there is no point polling on. */
   expired?: boolean;
 }
@@ -98,10 +98,13 @@ export interface ApprovalOutcome {
 }
 
 /** The kinds of thing a person can be asked to share. */
-export type RequestKind = "location" | "photo";
+export type RequestKind = "location" | "photo" | "text";
 
 export interface RequestOptions {
-  /** The question. Defaults to "Share your location?" / "Take a photo?". */
+  /**
+   * The question. Defaults to "Share your location?" / "Take a photo?" /
+   * "Answer a question?".
+   */
   title?: string;
   message?: string;
   /** Demand a fingerprint or face before the share goes out. */
@@ -111,6 +114,11 @@ export interface RequestOptions {
   wait?: number;
   /** Seconds the request stays answerable, 60-3600. Defaults to 600. */
   expiresIn?: number;
+  /**
+   * Text requests only: a hint at the shape of the answer, shown in the
+   * field on the phone ("6-digit code"). Up to 80 characters.
+   */
+  placeholder?: string;
 }
 
 /** One position, as the phone read it a moment before sending. */
@@ -132,13 +140,18 @@ export interface PhotoResult {
   height?: number;
 }
 
+/** A typed answer: 1 to 500 characters, trimmed. */
+export interface TextResult {
+  text: string;
+}
+
 export interface RequestResult {
   ok: true;
   id: string;
   /** `null` means nobody answered in time. Silence is not consent. */
   response: "approve" | "deny" | null;
   /** What was shared. `null` unless the person approved. */
-  result: LocationResult | PhotoResult | null;
+  result: LocationResult | PhotoResult | TextResult | null;
 }
 
 export interface RequestWaitOptions extends Omit<RequestOptions, "wait"> {
@@ -152,7 +165,7 @@ export interface RequestWaitOptions extends Omit<RequestOptions, "wait"> {
   pollIntervalMs?: number;
 }
 
-export interface RequestOutcome<R = LocationResult | PhotoResult> {
+export interface RequestOutcome<R = LocationResult | PhotoResult | TextResult> {
   id: string;
   /** `null` means nobody answered, or the request expired. */
   response: "approve" | "deny" | null;
@@ -191,12 +204,14 @@ export declare class Lauther {
   poll(id: string): Promise<PollResult>;
   /** Ask and wait, past the server's 25s cap, on one notification. */
   requestApproval(question: string, options?: WaitOptions): Promise<ApprovalOutcome>;
-  /** Ask the person to share `"location"` or a `"photo"`; answers within `wait` seconds. */
+  /** Ask the person to share `"location"`, a `"photo"` or a typed `"text"`; answers within `wait` seconds. */
   request(kind: RequestKind, options?: RequestOptions): Promise<RequestResult>;
   /** Ask for the person's position and wait, past the server's 25s cap. */
   requestLocation(options?: RequestWaitOptions): Promise<RequestOutcome<LocationResult>>;
   /** Ask for one picture and wait, past the server's 25s cap. */
   requestPhoto(options?: RequestWaitOptions): Promise<RequestOutcome<PhotoResult>>;
+  /** Ask a short question and wait for the typed answer, past the server's 25s cap. */
+  requestText(options?: RequestWaitOptions): Promise<RequestOutcome<TextResult>>;
   /** True only on an explicit Approve; a denial and a timeout are both false. */
   ask(question: string, options?: WaitOptions): Promise<boolean>;
 }

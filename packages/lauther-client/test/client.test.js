@@ -292,3 +292,85 @@ test("nobody answering a request is an outcome, not an exception", async () => {
   assert.equal(out.result, null);
   assert.equal(out.expired, false);
 });
+
+test("requestText sends kind text with the placeholder and hands back the text", async () => {
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r3", response: "approve", confirmedBy: "biometric",
+      result: { text: "482913" } },
+  });
+  const out = await new Lauther("lpt_test", { fetch }).requestText({
+    title: "Code?", message: "From your authenticator", placeholder: "6-digit code",
+    requireBiometric: true,
+  });
+  assert.equal(out.response, "approve");
+  assert.deepEqual(out.result, { text: "482913" });
+  assert.equal(out.confirmedBy, "biometric");
+  assert.equal(out.expired, false);
+  assert.equal(fetch.calls.length, 1, "must not poll when it already knows");
+  assert.equal(fetch.calls[0].path, "/v1/request");
+  assert.equal(fetch.calls[0].body.kind, "text");
+  assert.equal(fetch.calls[0].body.title, "Code?");
+  assert.equal(fetch.calls[0].body.placeholder, "6-digit code");
+  assert.equal(fetch.calls[0].body.requireBiometric, true);
+  assert.equal(fetch.calls[0].body.wait, 25);
+});
+
+test("requestText polls the same request past 25s and returns the answer", async () => {
+  let polls = 0;
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r3", response: null, result: null },
+    "/v1/action/poll": () => {
+      polls += 1;
+      return polls < 2
+        ? { response: null, confirmedBy: null, result: null }
+        : { response: "approve", confirmedBy: null, result: { text: "blue" } };
+    },
+  });
+  const out = await new Lauther("lpt_test", { fetch })
+      .requestText({ timeoutSeconds: 60, pollIntervalMs: 1, placeholder: "a colour" });
+  assert.equal(out.response, "approve");
+  assert.deepEqual(out.result, { text: "blue" });
+  const starts = fetch.calls.filter(c => c.path === "/v1/request");
+  assert.equal(starts.length, 1, "one question on the phone, not a pile");
+  assert.equal(starts[0].body.placeholder, "a colour");
+  assert.equal(starts[0].body.timeoutSeconds, undefined, "client-only options stay client-side");
+});
+
+test("a declined text request carries no text", async () => {
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r3", response: null, result: null },
+    "/v1/action/poll": { response: "deny", confirmedBy: null, result: null },
+  });
+  const out = await new Lauther("lpt_test", { fetch })
+      .requestText({ timeoutSeconds: 60, pollIntervalMs: 1 });
+  assert.equal(out.response, "deny");
+  assert.equal(out.result, null);
+});
+
+test("nobody answering a text request is an outcome, not an exception", async () => {
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r3", response: null, result: null },
+    "/v1/action/poll": { response: null, confirmedBy: null, result: null },
+  });
+  const out = await new Lauther("lpt_test", { fetch })
+      .requestText({ timeoutSeconds: 0.05, pollIntervalMs: 1 });
+  assert.equal(out.response, null);
+  assert.equal(out.result, null);
+  assert.equal(out.expired, false);
+});
+
+test("an expired text request stops the wait early", async () => {
+  let polls = 0;
+  const fetch = routedFetch({
+    "/v1/request": { ok: true, id: "r3", response: null, result: null },
+    "/v1/action/poll": () => {
+      polls += 1;
+      return { response: null, confirmedBy: null, result: null, expired: true };
+    },
+  });
+  const out = await new Lauther("lpt_test", { fetch })
+      .requestText({ timeoutSeconds: 600, pollIntervalMs: 1 });
+  assert.equal(out.response, null);
+  assert.equal(out.expired, true);
+  assert.equal(polls, 1);
+});

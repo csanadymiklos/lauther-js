@@ -48,13 +48,13 @@ async function connect(baseUrl) {
   return client;
 }
 
-test("it advertises exactly the four tools, with usable descriptions", async () => {
+test("it advertises exactly the five tools, with usable descriptions", async () => {
   const api = await fakeLauther(() => ({ body: {} }));
   const client = await connect(api.url);
   try {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(),
-      ["ask_approval", "get_location", "request_photo", "send_notification"]);
+      ["ask_approval", "ask_text", "get_location", "request_photo", "send_notification"]);
 
     const ask = tools.find((t) => t.name === "ask_approval");
     assert.match(ask.description, /irreversible/i,
@@ -69,6 +69,14 @@ test("it advertises exactly the four tools, with usable descriptions", async () 
         ["details", "question", "require_biometric", "timeout_seconds"]);
       assert.ok(!t.inputSchema.required?.length, `${name}: every input is optional`);
     }
+
+    const asker = tools.find((t) => t.name === "ask_text");
+    assert.deepEqual(Object.keys(asker.inputSchema.properties).sort(),
+      ["details", "placeholder", "question", "require_biometric", "timeout_seconds"]);
+    assert.ok(!asker.inputSchema.required?.length, "ask_text: every input is optional");
+    assert.match(asker.description, /code/i,
+      "the description must tell an agent WHEN to reach for it");
+    assert.match(asker.description, /never for long text/i);
   } finally {
     await client.close();
     await api.close();
@@ -320,6 +328,114 @@ test("a declined photo says stop", async () => {
     const r = await client.callTool({ name: "request_photo", arguments: {} });
     assert.equal(r.content.length, 1);
     assert.match(r.content[0].text, /^DECLINED after \d+s\. Do not retry/);
+  } finally {
+    await client.close();
+    await api.close();
+  }
+});
+
+// --- requests: text ----------------------------------------------------------
+
+test("ask_text returns exactly what was typed, quoted, with the confirmation", async () => {
+  const api = await fakeLauther((url) =>
+    url === "/v1/request"
+      ? { body: { ok: true, id: "r3", response: "approve", confirmedBy: "biometric",
+        result: { text: "482913" } } }
+      : { body: {} });
+  const client = await connect(api.url);
+  try {
+    const r = await client.callTool({
+      name: "ask_text",
+      arguments: {
+        question: "What is the 6-digit code from your authenticator?",
+        details: "Needed to finish the login on staging.",
+        placeholder: "6-digit code",
+        require_biometric: true,
+      },
+    });
+    assert.match(r.content[0].text, /^ANSWERED after \d+s: "482913"\. Confirmed by biometric\./);
+    assert.ok(!r.isError);
+    assert.equal(api.seen[0].path, "/v1/request");
+    assert.equal(api.seen[0].auth, "Bearer lpt_test");
+    assert.equal(api.seen[0].body.kind, "text");
+    assert.equal(api.seen[0].body.title, "What is the 6-digit code from your authenticator?");
+    assert.equal(api.seen[0].body.message, "Needed to finish the login on staging.");
+    assert.equal(api.seen[0].body.placeholder, "6-digit code");
+    assert.equal(api.seen[0].body.requireBiometric, true);
+  } finally {
+    await client.close();
+    await api.close();
+  }
+});
+
+test("ask_text asks the default question and keeps quotes in the answer intact", async () => {
+  const api = await fakeLauther(() =>
+    ({ body: { ok: true, id: "r3", response: "approve", result: { text: 'the "blue" one' } } }));
+  const client = await connect(api.url);
+  try {
+    const r = await client.callTool({ name: "ask_text", arguments: {} });
+    assert.equal(api.seen[0].body.title, "Answer a question?");
+    assert.equal(api.seen[0].body.placeholder, undefined);
+    assert.match(r.content[0].text, /^ANSWERED after \d+s: "the \\"blue\\" one"\./);
+    assert.ok(!/Confirmed by/.test(r.content[0].text), "no confirmation given, none invented");
+  } finally {
+    await client.close();
+    await api.close();
+  }
+});
+
+test("a declined question says stop, and does not invite a retry", async () => {
+  const api = await fakeLauther(() =>
+    ({ body: { ok: true, id: "r3", response: "deny", result: null } }));
+  const client = await connect(api.url);
+  try {
+    const r = await client.callTool({ name: "ask_text", arguments: {} });
+    assert.equal(r.content.length, 1);
+    assert.match(r.content[0].text, /^DECLINED after \d+s\. Do not retry/);
+    assert.match(r.content[0].text, /the answer another way/);
+    assert.ok(!/ANSWERED/.test(r.content[0].text));
+  } finally {
+    await client.close();
+    await api.close();
+  }
+});
+
+test("an unanswered question is NO ANSWER, and an expired one is EXPIRED", async () => {
+  const quiet = await fakeLauther((url) =>
+    url === "/v1/request"
+      ? { body: { ok: true, id: "r3", response: null, result: null } }
+      : { body: { response: null, confirmedBy: null, result: null } });
+  const lapsed = await fakeLauther((url) =>
+    url === "/v1/request"
+      ? { body: { ok: true, id: "r4", response: null, result: null } }
+      : { body: { response: null, confirmedBy: null, result: null, expired: true } });
+  const c1 = await connect(quiet.url);
+  const c2 = await connect(lapsed.url);
+  try {
+    const a = await c1.callTool({ name: "ask_text", arguments: { timeout_seconds: 5 } });
+    assert.match(a.content[0].text, /^NO ANSWER after \d+s/);
+    assert.match(a.content[0].text, /no answer was shared/);
+    assert.equal(quiet.seen.filter((s) => s.path === "/v1/request").length, 1);
+
+    const b = await c2.callTool({ name: "ask_text", arguments: { timeout_seconds: 60 } });
+    assert.match(b.content[0].text, /^EXPIRED after \d+s/);
+    assert.ok(!/ANSWERED/.test(b.content[0].text));
+  } finally {
+    await c1.close();
+    await c2.close();
+    await quiet.close();
+    await lapsed.close();
+  }
+});
+
+test("ask_text refuses to guess when approval arrives without an answer", async () => {
+  const api = await fakeLauther(() =>
+    ({ body: { ok: true, id: "r3", response: "approve", result: null } }));
+  const client = await connect(api.url);
+  try {
+    const r = await client.callTool({ name: "ask_text", arguments: {} });
+    assert.equal(r.isError, true);
+    assert.match(r.content[0].text, /do not guess one/);
   } finally {
     await client.close();
     await api.close();

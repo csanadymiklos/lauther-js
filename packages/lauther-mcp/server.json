@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.csanadymiklos/lauther",
-  "description": "Puts Approve/Deny on your phone before an agent acts, waits for your fingerprint, and can ask you for your location or a photo.",
+  "description": "Puts Approve/Deny on your phone before an agent acts, waits for your fingerprint, and can ask you for your location, a photo or a short typed answer.",
   "repository": {
     "url": "https://github.com/csanadymiklos/lauther-js",
     "source": "github",
     "subfolder": "packages/lauther-mcp"
   },
-  "version": "0.2.0",
+  "version": "0.3.0",
   "websiteUrl": "https://lauther.app",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "lauther-mcp",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "transport": {
         "type": "stdio"
       },

@@ -180,21 +180,21 @@ export class Lauther {
   }
 
   /**
-   * Ask the person to share something from their phone: where they are, or a
-   * picture. The "yes" carries the payload.
+   * Ask the person to share something from their phone: where they are, a
+   * picture, or a short typed answer. The "yes" carries the payload.
    *
    * Like `approve()` this blocks server-side for up to 25 seconds, and
    * `response` is `"approve"`, `"deny"` or `null`. On an approve, `result`
-   * holds what was shared (see `LocationResult` and `PhotoResult`); on
-   * anything else it is `null`.
+   * holds what was shared (see `LocationResult`, `PhotoResult` and
+   * `TextResult`); on anything else it is `null`.
    *
-   * @param {"location" | "photo"} kind
+   * @param {"location" | "photo" | "text"} kind
    * @param {import("./index.d.ts").RequestOptions} [options]
    * @returns {Promise<import("./index.d.ts").RequestResult>}
    */
   async request(kind, options) {
     if (!kind) {
-      throw new LautherError('request() needs a kind: "location" or "photo".');
+      throw new LautherError('request() needs a kind: "location", "photo" or "text".');
     }
     const {wait = MAX_WAIT_SECONDS, ...rest} = options ?? {};
     return this.#request("/v1/request", {
@@ -229,11 +229,24 @@ export class Lauther {
   }
 
   /**
-   * Shared by `requestLocation()` and `requestPhoto()`: start the request,
-   * then keep asking about the SAME notification until it is answered,
-   * expires, or `timeoutSeconds` runs out.
+   * Ask a short question and wait for the typed answer: a code, a name, a
+   * choice. Same waiting rules as `requestApproval()`. `options.placeholder`
+   * (up to 80 characters) hints at the shape of the answer on the phone, for
+   * example "6-digit code". `result.text` is 1 to 500 characters.
    *
-   * @param {"location" | "photo"} kind
+   * @param {import("./index.d.ts").RequestWaitOptions} [options]
+   * @returns {Promise<import("./index.d.ts").RequestOutcome<import("./index.d.ts").TextResult>>}
+   */
+  requestText(options = {}) {
+    return this.#requestAndWait("text", options);
+  }
+
+  /**
+   * Shared by `requestLocation()`, `requestPhoto()` and `requestText()`:
+   * start the request, then keep asking about the SAME notification until it
+   * is answered, expires, or `timeoutSeconds` runs out.
+   *
+   * @param {"location" | "photo" | "text"} kind
    * @param {import("./index.d.ts").RequestWaitOptions} options
    */
   async #requestAndWait(kind, options) {

@@ -87,6 +87,24 @@ fetched the agent still gets the text and the link.
 
 Same options and the same four outcomes as `get_location`.
 
+### `ask_text`
+
+Asks you a short question and waits for you to type the answer on your phone:
+a verification code, a choice, a name, a fact only you know. The prompt shows
+the question and a field, with **Reply** and **Decline**. Answers run to 500
+characters, so it is for short things.
+
+| Result | What the agent is told |
+| --- | --- |
+| `ANSWERED` | exactly what you typed, in quotes |
+| `DECLINED` | do not retry and do not get the answer another way |
+| `NO ANSWER` | silence is not consent; nothing was sent |
+| `EXPIRED` | the request lapsed on your phone; nothing was sent |
+
+Options: `question` (default "Answer a question?"), `details`,
+`placeholder` (a hint in the field, such as "6-digit code"),
+`require_biometric`, `timeout_seconds` (default 120).
+
 ## Telling your agent when to use it
 
 Most models won't reach for an approval tool unless asked. Something like this

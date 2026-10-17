@@ -2,13 +2,14 @@
 /**
  * lauther-mcp — an MCP server that puts a human in the loop, on their phone.
  *
- * Four tools, each one thing an agent needs a person for:
+ * Five tools, each one thing an agent needs a person for:
  *
  *   ask_approval       the agent is about to do something irreversible and
  *                      asks first. Blocks until a person answers.
  *   send_notification  "the migration finished", "the build broke".
  *   get_location       "where are you?" - one position, shared on a tap.
  *   request_photo      "show me" - one picture, taken or picked on the phone.
+ *   ask_text           "what is the code?" - a short answer, typed on the phone.
  *
  * The interesting one is ask_approval. Lauther's /v1/approve long-polls for at
  * most 25 seconds, which suits a shell one-liner and not an agent whose owner
@@ -74,7 +75,7 @@ const confirmation = (out) => (out.confirmedBy ? ` Confirmed by ${out.confirmedB
  * The non-yes outcomes of a request, worded for an agent. Returns null when
  * the person did approve, so the caller can describe what was shared.
  *
- * @param {string} what "location" or "photo", for the sentence
+ * @param {string} what "location", "photo" or "answer", for the sentence
  */
 function notShared(out, what) {
   if (out.response === "approve") return null;
@@ -317,6 +318,60 @@ export function buildServer() {
         };
       } catch (err) {
         return failure(explain(err) + " No photo was obtained, so do not guess what it showed.");
+      }
+    },
+  );
+
+  server.registerTool(
+    "ask_text",
+    {
+      title: "Ask a human a short question",
+      description:
+        "Ask the human who owns this phone a short question and wait for them " +
+        "to type the answer on it. Use it for something only they know: a " +
+        "verification code, a choice between options, a name, a short fact. " +
+        "Never for long text (answers are capped at 500 characters), and not " +
+        "for permission to act: use ask_approval for that. Returns ANSWERED " +
+        "with exactly what they typed, or DECLINED, NO ANSWER or EXPIRED. On " +
+        "anything but ANSWERED you have no answer: do not guess one.",
+      inputSchema: {
+        question: z.string().min(1).max(250).optional()
+          .describe("The question, as they read it on a lock screen. Be " +
+            "specific about the shape of the answer: 'What is the 6-digit " +
+            "code from your authenticator?'. Defaults to 'Answer a question?'."),
+        details: z.string().max(2000).optional()
+          .describe("Anything else that helps them answer."),
+        placeholder: z.string().max(80).optional()
+          .describe("A hint shown in the answer field, e.g. '6-digit code'."),
+        require_biometric: z.boolean().optional()
+          .describe("Demand a fingerprint or face before the answer is sent."),
+        timeout_seconds: z.number().int().min(5).max(900).optional()
+          .describe("How long to wait for an answer. Defaults to 120."),
+      },
+    },
+    async ({ question = "Answer a question?", details, placeholder, require_biometric,
+      timeout_seconds = 120 }) => {
+      try {
+        const out = await lauther.requestText({
+          title: question,
+          message: details,
+          placeholder,
+          requireBiometric: require_biometric,
+          timeoutSeconds: timeout_seconds,
+        });
+        const notYes = notShared(out, "answer");
+        if (notYes) return notYes;
+
+        const answer = out.result;
+        if (!answer || typeof answer.text !== "string") {
+          return failure("They replied, but Lauther returned no usable answer. " +
+            "You have no answer: do not guess one.");
+        }
+        return text(`ANSWERED after ${out.waitedSeconds}s: ${JSON.stringify(answer.text)}.` +
+          `${confirmation(out)} That is what they typed, sent once in reply to what ` +
+          "you asked - use it for that and nothing else.");
+      } catch (err) {
+        return failure(explain(err) + " No answer was obtained, so do not guess one.");
       }
     },
   );
